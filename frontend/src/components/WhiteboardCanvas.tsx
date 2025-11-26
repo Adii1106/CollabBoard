@@ -1,45 +1,52 @@
 import React, { useRef, useEffect, useState } from "react";
 import { Stage, Layer, Line } from "react-konva";
-import { Socket, io } from "socket.io-client";
+import { Socket } from "socket.io-client";
 
-type Props = { sessionId: string };
+type Props = { sessionId: string; socket: Socket | null };
 
-export default function WhiteboardCanvas({ sessionId }: Props) {
+export default function WhiteboardCanvas({ sessionId, socket }: Props) {
   const [lines, setLines] = useState<Array<{ points: number[]; stroke: string }>>([]);
   const isDrawingRef = useRef(false);
   const stageRef = useRef<any>(null);
-  const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
-    // connect socket (assumes backend socket server at 3001)
-    socketRef.current = io("http://localhost:3001", {
-      query: { sessionId },
-    });
+    if (!socket) return;
 
-    socketRef.current.on("draw", (stroke: any) => {
+    socket.on("draw", ({ stroke }) => {
       setLines((prev) => [...prev, stroke]);
     });
 
     return () => {
-      socketRef.current?.disconnect();
+      socket.off("draw");
     };
-  }, [sessionId]);
+  }, [socket]);
+
+  if (!socket) return null; // prevent rendering before socket ready
 
   const handleMouseDown = (e: any) => {
     isDrawingRef.current = true;
     const pos = e.target.getStage().getPointerPosition();
-    setLines((prev) => [...prev, { points: [pos.x, pos.y], stroke: "#000000" }]);
+    const newLine = { points: [pos.x, pos.y], stroke: "#000" };
+    setLines((prev) => [...prev, newLine]);
   };
 
   const handleMouseMove = (e: any) => {
-    if (!isDrawingRef.current) return;
+    if (!isDrawingRef.current || !socket) return;
+
     const stage = e.target.getStage();
     const point = stage.getPointerPosition();
+
     setLines((prev) => {
       const last = prev[prev.length - 1];
-      const updated = prev.slice(0, -1).concat([{ ...last, points: last.points.concat([point.x, point.y]) }]);
-      // emit stroke incremental update
-      socketRef.current?.emit("draw", updated[updated.length - 1]);
+      const updatedLine = {
+        ...last,
+        points: [...last.points, point.x, point.y],
+      };
+
+      const updated = [...prev.slice(0, -1), updatedLine];
+
+      socket.emit("draw", { sessionId, stroke: updatedLine });
+
       return updated;
     });
   };
@@ -59,7 +66,14 @@ export default function WhiteboardCanvas({ sessionId }: Props) {
     >
       <Layer>
         {lines.map((line, i) => (
-          <Line key={i} points={line.points} stroke={line.stroke} strokeWidth={3} tension={0.5} lineCap="round" />
+          <Line
+            key={i}
+            points={line.points}
+            stroke={line.stroke}
+            strokeWidth={3}
+            tension={0.5}
+            lineCap="round"
+          />
         ))}
       </Layer>
     </Stage>
