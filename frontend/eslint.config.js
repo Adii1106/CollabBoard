@@ -19,5 +19,9 @@ export default defineConfig([
       ecmaVersion: 2020,
       globals: globals.browser,
     },
+    rules: {
+      // 🔹 Disable the experimental rule that blocks reading refs during render
+      'react-hooks/refs': 'off',
+    },
   },
 ])

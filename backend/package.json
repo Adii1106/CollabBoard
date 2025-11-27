@@ -21,6 +21,7 @@
     "express": "^5.1.0",
     "express-session": "^1.18.2",
     "keycloak-connect": "^26.1.1",
+    "konva": "^10.0.12",
     "socket.io": "^4.8.1"
   },
   "devDependencies": {

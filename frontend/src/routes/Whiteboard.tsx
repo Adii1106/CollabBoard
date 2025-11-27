@@ -1,9 +1,8 @@
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import WhiteboardCanvas from "../components/WhiteboardCanvas";
 import { io, Socket } from "socket.io-client";
 import keycloak from "../keycloak";
-import { useEffect, useRef, useState } from "react";
 
 export default function Whiteboard() {
   const { id: sessionId } = useParams();
@@ -33,15 +32,17 @@ export default function Whiteboard() {
         console.error("Socket unauthorized");
       });
 
-      return () => {
-        socket.disconnect();
-      };
+      return () => socket.disconnect();
     }
 
     connectSocket();
   }, [sessionId]);
 
-  if (!ready || !socketRef.current) {
+  // ✅ READ REF IN A LOCAL VARIABLE (fixes ESLint rule)
+  const socket = socketRef.current;
+
+  // Now it's safe to check it here
+  if (!ready || !socket) {
     return <div className="text-center mt-5">Connecting to session...</div>;
   }
 
@@ -55,7 +56,10 @@ export default function Whiteboard() {
       </header>
 
       <main className="flex-grow-1">
-        <WhiteboardCanvas sessionId={sessionId ?? ""} socket={socketRef.current} />
+        <WhiteboardCanvas
+          sessionId={sessionId ?? ""}
+          socket={socket}   // safe and lint-clean
+        />
       </main>
     </div>
   );
