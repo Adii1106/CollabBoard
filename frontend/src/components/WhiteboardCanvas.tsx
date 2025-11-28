@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from "react";
+import React, { useRef, useEffect, useState, useCallback } from "react";
 import { Stage, Layer, Line, Text } from "react-konva";
 import Konva from "konva";
 import { Socket } from "socket.io-client";
@@ -21,30 +21,49 @@ type CursorData = {
   username: string;
 };
 
+type ActionAdd = { type: "add"; stroke: Stroke };
+type ActionRemove = { type: "remove"; stroke: Stroke };
+type Action = ActionAdd | ActionRemove;
+
 export default function WhiteboardCanvas({ sessionId, socket }: Props) {
   const [lines, setLines] = useState<Stroke[]>([]);
   const [cursors, setCursors] = useState<Record<string, CursorData>>({});
-
-  const isDrawingRef = useRef(false);
-  const stageRef = useRef<Konva.Stage | null>(null);
-
-  // Brush settings
   const [color, setColor] = useState("#000000");
   const [size, setSize] = useState(3);
   const [tool, setTool] = useState<"brush" | "eraser">("brush");
 
-  // ---------------------------------------------------
-  // RECEIVE EVENTS FROM SERVER
-  // ---------------------------------------------------
+  const isDrawingRef = useRef(false);
+  const stageRef = useRef<Konva.Stage | null>(null);
+  const currentStrokeIdRef = useRef<string | null>(null);
+
+  const undoStackRef = useRef<Action[]>([]);
+  const redoStackRef = useRef<Action[]>([]);
+
+  // -------------------------------
+  // Socket listeners
+  // -------------------------------
   useEffect(() => {
-    socket.on("draw", ({ stroke }) => {
-      setLines((prev) => [...prev, stroke]);
+    if (!socket) return;
+
+    // DRAW: incremental updates (add or replace by id)
+    socket.on("draw", ({ stroke }: { stroke: Stroke }) => {
+      setLines((prev) => {
+        const exists = prev.find((l) => l.id === stroke.id);
+        if (exists) {
+          // update existing stroke in-place
+          return prev.map((l) => (l.id === stroke.id ? stroke : l));
+        }
+        // add stroke if not present
+        return [...prev, stroke];
+      });
     });
 
-    socket.on("erase", ({ strokeId }) => {
-      setLines((prev) => prev.filter((line) => line.id !== strokeId));
+    // ERASE: remove stroke by id
+    socket.on("erase", ({ strokeId }: { strokeId: string }) => {
+      setLines((prev) => prev.filter((l) => l.id !== strokeId));
     });
 
+    // CURSOR: update remote cursors
     socket.on("cursor-move", ({ userId, cursor, username }) => {
       setCursors((prev) => ({
         ...prev,
@@ -59,134 +78,215 @@ export default function WhiteboardCanvas({ sessionId, socket }: Props) {
     };
   }, [socket]);
 
-  // ---------------------------------------------------
-  // DETECT IF CURSOR TOUCHES A STROKE (ERASER)
-  // ---------------------------------------------------
-  const findStrokeToErase = (x: number, y: number): string | null => {
-    const ERASER_RADIUS = size * 2;
+  // -------------------------------
+  // Helpers
+  // -------------------------------
+  const pushAction = useCallback((action: Action) => {
+    undoStackRef.current.push(action);
+    // clear redo on new action
+    redoStackRef.current = [];
+  }, []);
 
-    for (const stroke of lines) {
-      const pts = stroke.points;
+  const findStrokeToErase = useCallback(
+    (x: number, y: number, ERA_SIZE = Math.max(8, size * 2)): string | null => {
+      for (const stroke of lines) {
+        const pts = stroke.points;
+        for (let i = 0; i < pts.length - 2; i += 2) {
+          const x1 = pts[i];
+          const y1 = pts[i + 1];
+          const x2 = pts[i + 2];
+          const y2 = pts[i + 3];
 
-      for (let i = 0; i < pts.length - 2; i += 2) {
-        const x1 = pts[i];
-        const y1 = pts[i + 1];
-        const x2 = pts[i + 2];
-        const y2 = pts[i + 3];
+          const A = x - x1;
+          const B = y - y1;
+          const C = x2 - x1;
+          const D = y2 - y1;
 
-        // distance from point to segment
-        const A = x - x1;
-        const B = y - y1;
-        const C = x2 - x1;
-        const D = y2 - y1;
+          const dot = A * C + B * D;
+          const lenSq = C * C + D * D;
+          let param = -1;
+          if (lenSq !== 0) param = dot / lenSq;
 
-        const dot = A * C + B * D;
-        const lenSq = C * C + D * D;
-        let param = -1;
+          let xx, yy;
+          if (param < 0) {
+            xx = x1;
+            yy = y1;
+          } else if (param > 1) {
+            xx = x2;
+            yy = y2;
+          } else {
+            xx = x1 + param * C;
+            yy = y1 + param * D;
+          }
 
-        if (lenSq !== 0) param = dot / lenSq;
-
-        let xx, yy;
-
-        if (param < 0) {
-          xx = x1;
-          yy = y1;
-        } else if (param > 1) {
-          xx = x2;
-          yy = y2;
-        } else {
-          xx = x1 + param * C;
-          yy = y1 + param * D;
-        }
-
-        const dx = x - xx;
-        const dy = y - yy;
-
-        if (dx * dx + dy * dy < ERASER_RADIUS * ERASER_RADIUS) {
-          return stroke.id;
+          const dx = x - xx;
+          const dy = y - yy;
+          if (dx * dx + dy * dy < ERA_SIZE * ERA_SIZE) {
+            return stroke.id;
+          }
         }
       }
-    }
+      return null;
+    },
+    [lines, size]
+  );
 
-    return null;
-  };
-
-  // ---------------------------------------------------
-  // DRAWING / ERASING HANDLERS
-  // ---------------------------------------------------
+  // -------------------------------
+  // Mouse handlers
+  // -------------------------------
   const handleMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {
-    const stage = e.target.getStage();
-    const pos = stage?.getPointerPosition();
+    const pos = e.target.getStage()?.getPointerPosition();
     if (!pos) return;
+
+    // always emit cursor
+    socket.emit("cursor-move", { sessionId, cursor: { x: pos.x, y: pos.y } });
 
     if (tool === "eraser") {
       const targetId = findStrokeToErase(pos.x, pos.y);
       if (targetId) {
-        setLines((prev) => prev.filter((l) => l.id !== targetId));
-        socket.emit("erase", { sessionId, strokeId: targetId });
+        const removed = lines.find((l) => l.id === targetId);
+        if (removed) {
+          setLines((prev) => prev.filter((l) => l.id !== targetId));
+          pushAction({ type: "remove", stroke: removed });
+          socket.emit("erase", { sessionId, strokeId: targetId });
+        }
       }
       return;
     }
 
-    // Brush mode
+    // Brush mode: start stroke
     isDrawingRef.current = true;
-
     const id = crypto.randomUUID();
-    const newLine: Stroke = {
+    currentStrokeIdRef.current = id;
+
+    const newStroke: Stroke = {
       id,
       points: [pos.x, pos.y],
       stroke: color,
       strokeWidth: size,
     };
 
-    setLines((prev) => [...prev, newLine]);
+    setLines((prev) => [...prev, newStroke]);
+    // do not push action until completed (mouseup)
   };
 
   const handleMouseMove = (e: Konva.KonvaEventObject<MouseEvent>) => {
-    const stage = e.target.getStage();
-    const pos = stage?.getPointerPosition();
+    const pos = e.target.getStage()?.getPointerPosition();
     if (!pos) return;
 
-    // Send cursor position
-    socket.emit("cursor-move", {
-      sessionId,
-      cursor: { x: pos.x, y: pos.y },
-    });
+    // emit cursor
+    socket.emit("cursor-move", { sessionId, cursor: { x: pos.x, y: pos.y } });
 
     if (tool === "eraser") {
+      // continuous erasing
       const targetId = findStrokeToErase(pos.x, pos.y);
       if (targetId) {
-        setLines((prev) => prev.filter((l) => l.id !== targetId));
-        socket.emit("erase", { sessionId, strokeId: targetId });
+        const removed = lines.find((l) => l.id === targetId);
+        if (removed) {
+          setLines((prev) => prev.filter((l) => l.id !== targetId));
+          pushAction({ type: "remove", stroke: removed });
+          socket.emit("erase", { sessionId, strokeId: targetId });
+        }
       }
       return;
     }
 
     if (!isDrawingRef.current) return;
 
-    // Brush drawing
+    // update current stroke and broadcast incremental stroke
     setLines((prev) => {
+      if (prev.length === 0) return prev;
       const last = prev[prev.length - 1];
-      const updatedLine: Stroke = {
+      // ensure we are updating the stroke the user started
+      if (!last || last.id !== currentStrokeIdRef.current) return prev;
+
+      const updated: Stroke = {
         ...last,
         points: [...last.points, pos.x, pos.y],
+        stroke: color,
+        strokeWidth: size,
       };
 
-      const updatedLines = [...prev.slice(0, -1), updatedLine];
+      const newArr = [...prev.slice(0, -1), updated];
 
-      socket.emit("draw", { sessionId, stroke: updatedLine });
+      // broadcast incremental update (receiver will update by id)
+      socket.emit("draw", { sessionId, stroke: updated });
 
-      return updatedLines;
+      return newArr;
     });
   };
 
   const handleMouseUp = () => {
+    if (isDrawingRef.current && currentStrokeIdRef.current) {
+      const stroke = lines.find((l) => l.id === currentStrokeIdRef.current);
+      if (stroke) {
+        pushAction({ type: "add", stroke });
+      }
+    }
     isDrawingRef.current = false;
+    currentStrokeIdRef.current = null;
   };
 
-  // ---------------------------------------------------
-  // RENDER
-  // ---------------------------------------------------
+  // -------------------------------
+  // Undo / Redo
+  // -------------------------------
+  const canUndo = () => undoStackRef.current.length > 0;
+  const canRedo = () => redoStackRef.current.length > 0;
+
+  const handleUndo = () => {
+    const action = undoStackRef.current.pop();
+    if (!action) return;
+
+    if (action.type === "add") {
+      setLines((prev) => prev.filter((l) => l.id !== action.stroke.id));
+      socket.emit("erase", { sessionId, strokeId: action.stroke.id });
+    } else if (action.type === "remove") {
+      setLines((prev) => [...prev, action.stroke]);
+      socket.emit("draw", { sessionId, stroke: action.stroke });
+    }
+
+    redoStackRef.current.push(action);
+  };
+
+  const handleRedo = () => {
+    const action = redoStackRef.current.pop();
+    if (!action) return;
+
+    if (action.type === "add") {
+      setLines((prev) => [...prev, action.stroke]);
+      socket.emit("draw", { sessionId, stroke: action.stroke });
+    } else if (action.type === "remove") {
+      setLines((prev) => prev.filter((l) => l.id !== action.stroke.id));
+      socket.emit("erase", { sessionId, strokeId: action.stroke.id });
+    }
+
+    undoStackRef.current.push(action);
+  };
+
+  // keyboard shortcuts
+  useEffect(() => {
+    const handler = (ev: KeyboardEvent) => {
+      const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
+      const ctrl = isMac ? ev.metaKey : ev.ctrlKey;
+      if (!ctrl) return;
+
+      if (ev.key.toLowerCase() === "z") {
+        ev.preventDefault();
+        handleUndo();
+      } else if (ev.key.toLowerCase() === "y") {
+        ev.preventDefault();
+        handleRedo();
+      }
+    };
+
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // -------------------------------
+  // Render
+  // -------------------------------
   return (
     <>
       {/* Toolbar */}
@@ -200,7 +300,6 @@ export default function WhiteboardCanvas({ sessionId, socket }: Props) {
           alignItems: "center",
         }}
       >
-        {/* Brush mode */}
         <button
           className="btn btn-sm"
           style={{
@@ -212,7 +311,6 @@ export default function WhiteboardCanvas({ sessionId, socket }: Props) {
           Brush
         </button>
 
-        {/* Eraser mode */}
         <button
           className="btn btn-sm"
           style={{
@@ -224,10 +322,9 @@ export default function WhiteboardCanvas({ sessionId, socket }: Props) {
           Eraser
         </button>
 
-        {/* Color picker */}
         {tool === "brush" && (
           <>
-            <label>Color:</label>
+            <label style={{ marginLeft: 8 }}>Color:</label>
             <input
               type="color"
               value={color}
@@ -236,15 +333,33 @@ export default function WhiteboardCanvas({ sessionId, socket }: Props) {
           </>
         )}
 
-        {/* Size slider */}
-        <label style={{ marginLeft: 20 }}>Size: {size}px</label>
+        <label style={{ marginLeft: 12 }}>
+          Size: <strong>{size}px</strong>
+        </label>
         <input
           type="range"
           min="1"
-          max="40"
+          max="60"
           value={size}
           onChange={(e) => setSize(Number(e.target.value))}
         />
+
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+          <button
+            className="btn btn-sm btn-outline-secondary"
+            onClick={handleUndo}
+            disabled={!canUndo()}
+          >
+            Undo
+          </button>
+          <button
+            className="btn btn-sm btn-outline-secondary"
+            onClick={handleRedo}
+            disabled={!canRedo()}
+          >
+            Redo
+          </button>
+        </div>
       </div>
 
       {/* Canvas */}
@@ -268,7 +383,6 @@ export default function WhiteboardCanvas({ sessionId, socket }: Props) {
             />
           ))}
 
-          {/* Cursors */}
           {Object.entries(cursors).map(([userId, cursor]) => (
             <React.Fragment key={userId}>
               <Line
@@ -280,7 +394,7 @@ export default function WhiteboardCanvas({ sessionId, socket }: Props) {
                 x={cursor.x + 10}
                 y={cursor.y + 10}
                 text={cursor.username}
-                fontSize={16}
+                fontSize={14}
                 fill="black"
               />
             </React.Fragment>
