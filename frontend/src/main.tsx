@@ -5,6 +5,8 @@ import { BrowserRouter } from "react-router-dom";
 import keycloak from "./keycloak";
 import "bootstrap/dist/css/bootstrap.min.css";
 
+console.log("ENV CHECK:", import.meta.env);
+
 keycloak
   .init({
     onLoad: "login-required",

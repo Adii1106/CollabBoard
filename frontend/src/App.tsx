@@ -1,4 +1,4 @@
-import React from "react";
+
 import { Routes, Route } from "react-router-dom";
 import Landing from "./routes/Landing";
 import Whiteboard from "./routes/Whiteboard";

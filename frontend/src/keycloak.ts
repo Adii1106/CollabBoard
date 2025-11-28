@@ -6,4 +6,5 @@ const keycloak = new Keycloak({
   clientId: import.meta.env.VITE_KEYCLOAK_CLIENT_ID,
 });
 
+
 export default keycloak;

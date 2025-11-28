@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import  { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api";
 import keycloak from "../keycloak";
@@ -20,6 +20,7 @@ export default function Landing() {
     }
   };
 
+
   const joinSession = async () => {
     if (!joinId) return alert("Please enter session ID");
 
@@ -30,7 +31,8 @@ export default function Landing() {
       console.error(err);
       alert("Failed to join session");
     }
-  };
+  }
+
 
   return (
     <div className="container py-5">
