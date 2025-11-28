@@ -43,27 +43,20 @@ export default function WhiteboardCanvas({ sessionId, socket }: Props) {
   // Socket listeners
   // -------------------------------
   useEffect(() => {
-    if (!socket) return;
-
-    // DRAW: incremental updates (add or replace by id)
     socket.on("draw", ({ stroke }: { stroke: Stroke }) => {
       setLines((prev) => {
         const exists = prev.find((l) => l.id === stroke.id);
         if (exists) {
-          // update existing stroke in-place
           return prev.map((l) => (l.id === stroke.id ? stroke : l));
         }
-        // add stroke if not present
         return [...prev, stroke];
       });
     });
 
-    // ERASE: remove stroke by id
     socket.on("erase", ({ strokeId }: { strokeId: string }) => {
       setLines((prev) => prev.filter((l) => l.id !== strokeId));
     });
 
-    // CURSOR: update remote cursors
     socket.on("cursor-move", ({ userId, cursor, username }) => {
       setCursors((prev) => ({
         ...prev,
@@ -79,14 +72,49 @@ export default function WhiteboardCanvas({ sessionId, socket }: Props) {
   }, [socket]);
 
   // -------------------------------
-  // Helpers
+  // Undo / Redo helpers
   // -------------------------------
   const pushAction = useCallback((action: Action) => {
     undoStackRef.current.push(action);
-    // clear redo on new action
     redoStackRef.current = [];
   }, []);
 
+  const handleUndo = () => {
+    const action = undoStackRef.current.pop();
+    if (!action) return;
+
+    if (action.type === "add") {
+      setLines((prev) => prev.filter((l) => l.id !== action.stroke.id));
+      socket.emit("erase", { sessionId, strokeId: action.stroke.id });
+    } else {
+      setLines((prev) => [...prev, action.stroke]);
+      socket.emit("draw", { sessionId, stroke: action.stroke });
+    }
+
+    redoStackRef.current.push(action);
+  };
+
+  const handleRedo = () => {
+    const action = redoStackRef.current.pop();
+    if (!action) return;
+
+    if (action.type === "add") {
+      setLines((prev) => [...prev, action.stroke]);
+      socket.emit("draw", { sessionId, stroke: action.stroke });
+    } else {
+      setLines((prev) => prev.filter((l) => l.id !== action.stroke.id));
+      socket.emit("erase", { sessionId, strokeId: action.stroke.id });
+    }
+
+    undoStackRef.current.push(action);
+  };
+
+  const canUndo = () => undoStackRef.current.length > 0;
+  const canRedo = () => redoStackRef.current.length > 0;
+
+  // -------------------------------
+  // Eraser hit-test
+  // -------------------------------
   const findStrokeToErase = useCallback(
     (x: number, y: number, ERA_SIZE = Math.max(8, size * 2)): string | null => {
       for (const stroke of lines) {
@@ -138,7 +166,6 @@ export default function WhiteboardCanvas({ sessionId, socket }: Props) {
     const pos = e.target.getStage()?.getPointerPosition();
     if (!pos) return;
 
-    // always emit cursor
     socket.emit("cursor-move", { sessionId, cursor: { x: pos.x, y: pos.y } });
 
     if (tool === "eraser") {
@@ -154,7 +181,6 @@ export default function WhiteboardCanvas({ sessionId, socket }: Props) {
       return;
     }
 
-    // Brush mode: start stroke
     isDrawingRef.current = true;
     const id = crypto.randomUUID();
     currentStrokeIdRef.current = id;
@@ -167,18 +193,15 @@ export default function WhiteboardCanvas({ sessionId, socket }: Props) {
     };
 
     setLines((prev) => [...prev, newStroke]);
-    // do not push action until completed (mouseup)
   };
 
   const handleMouseMove = (e: Konva.KonvaEventObject<MouseEvent>) => {
     const pos = e.target.getStage()?.getPointerPosition();
     if (!pos) return;
 
-    // emit cursor
     socket.emit("cursor-move", { sessionId, cursor: { x: pos.x, y: pos.y } });
 
     if (tool === "eraser") {
-      // continuous erasing
       const targetId = findStrokeToErase(pos.x, pos.y);
       if (targetId) {
         const removed = lines.find((l) => l.id === targetId);
@@ -193,11 +216,8 @@ export default function WhiteboardCanvas({ sessionId, socket }: Props) {
 
     if (!isDrawingRef.current) return;
 
-    // update current stroke and broadcast incremental stroke
     setLines((prev) => {
-      if (prev.length === 0) return prev;
       const last = prev[prev.length - 1];
-      // ensure we are updating the stroke the user started
       if (!last || last.id !== currentStrokeIdRef.current) return prev;
 
       const updated: Stroke = {
@@ -207,12 +227,11 @@ export default function WhiteboardCanvas({ sessionId, socket }: Props) {
         strokeWidth: size,
       };
 
-      const newArr = [...prev.slice(0, -1), updated];
+      const arr = [...prev.slice(0, -1), updated];
 
-      // broadcast incremental update (receiver will update by id)
       socket.emit("draw", { sessionId, stroke: updated });
 
-      return newArr;
+      return arr;
     });
   };
 
@@ -228,61 +247,20 @@ export default function WhiteboardCanvas({ sessionId, socket }: Props) {
   };
 
   // -------------------------------
-  // Undo / Redo
+  // Download Whiteboard as PNG
   // -------------------------------
-  const canUndo = () => undoStackRef.current.length > 0;
-  const canRedo = () => redoStackRef.current.length > 0;
+  const handleDownload = () => {
+    if (!stageRef.current) return;
 
-  const handleUndo = () => {
-    const action = undoStackRef.current.pop();
-    if (!action) return;
+    const uri = stageRef.current.toDataURL({ pixelRatio: 2 });
 
-    if (action.type === "add") {
-      setLines((prev) => prev.filter((l) => l.id !== action.stroke.id));
-      socket.emit("erase", { sessionId, strokeId: action.stroke.id });
-    } else if (action.type === "remove") {
-      setLines((prev) => [...prev, action.stroke]);
-      socket.emit("draw", { sessionId, stroke: action.stroke });
-    }
-
-    redoStackRef.current.push(action);
+    const link = document.createElement("a");
+    link.download = `whiteboard-${Date.now()}.png`;
+    link.href = uri;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
-
-  const handleRedo = () => {
-    const action = redoStackRef.current.pop();
-    if (!action) return;
-
-    if (action.type === "add") {
-      setLines((prev) => [...prev, action.stroke]);
-      socket.emit("draw", { sessionId, stroke: action.stroke });
-    } else if (action.type === "remove") {
-      setLines((prev) => prev.filter((l) => l.id !== action.stroke.id));
-      socket.emit("erase", { sessionId, strokeId: action.stroke.id });
-    }
-
-    undoStackRef.current.push(action);
-  };
-
-  // keyboard shortcuts
-  useEffect(() => {
-    const handler = (ev: KeyboardEvent) => {
-      const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
-      const ctrl = isMac ? ev.metaKey : ev.ctrlKey;
-      if (!ctrl) return;
-
-      if (ev.key.toLowerCase() === "z") {
-        ev.preventDefault();
-        handleUndo();
-      } else if (ev.key.toLowerCase() === "y") {
-        ev.preventDefault();
-        handleRedo();
-      }
-    };
-
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // -------------------------------
   // Render
@@ -324,7 +302,7 @@ export default function WhiteboardCanvas({ sessionId, socket }: Props) {
 
         {tool === "brush" && (
           <>
-            <label style={{ marginLeft: 8 }}>Color:</label>
+            <label>Color:</label>
             <input
               type="color"
               value={color}
@@ -333,7 +311,7 @@ export default function WhiteboardCanvas({ sessionId, socket }: Props) {
           </>
         )}
 
-        <label style={{ marginLeft: 12 }}>
+        <label>
           Size: <strong>{size}px</strong>
         </label>
         <input
@@ -344,22 +322,16 @@ export default function WhiteboardCanvas({ sessionId, socket }: Props) {
           onChange={(e) => setSize(Number(e.target.value))}
         />
 
-        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-          <button
-            className="btn btn-sm btn-outline-secondary"
-            onClick={handleUndo}
-            disabled={!canUndo()}
-          >
-            Undo
-          </button>
-          <button
-            className="btn btn-sm btn-outline-secondary"
-            onClick={handleRedo}
-            disabled={!canRedo()}
-          >
-            Redo
-          </button>
-        </div>
+        <button className="btn btn-sm btn-outline-secondary" onClick={handleUndo} disabled={!canUndo()}>
+          Undo
+        </button>
+        <button className="btn btn-sm btn-outline-secondary" onClick={handleRedo} disabled={!canRedo()}>
+          Redo
+        </button>
+
+        <button className="btn btn-sm btn-success" onClick={handleDownload}>
+          Download PNG
+        </button>
       </div>
 
       {/* Canvas */}
