@@ -1,8 +1,7 @@
-
-import { Routes, Route } from "react-router-dom";
-import Landing from "./routes/Landing";
-import Whiteboard from "./routes/Whiteboard";
-import AuthRedirect from "./routes/AuthRedirect";
+import { Routes, Route } from "react-router-dom"
+import Landing from "./routes/Landing"
+import Whiteboard from "./routes/Whiteboard"
+import AuthRedirect from "./routes/AuthRedirect"
 
 export default function App() {
   return (
@@ -11,5 +10,5 @@ export default function App() {
       <Route path="/session/:id" element={<Whiteboard />} />
       <Route path="/auth-redirect" element={<AuthRedirect />} />
     </Routes>
-  );
+  )
 }

@@ -1,46 +1,47 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import api from "../api";
-import keycloak from "../keycloak";
-import { FiPlus, FiLogIn, FiLogOut, FiZap, FiCpu, FiShield, FiShare2, FiEdit3, FiLayout } from "react-icons/fi";
+import { useState } from "react"
+import { useNavigate } from "react-router-dom"
+import api from "../api"
+import keycloak from "../keycloak"
+import { FiPlus, FiLogIn, FiLogOut, FiZap, FiCpu, FiShield, FiShare2, FiEdit3, FiLayout } from "react-icons/fi"
 
 export default function Landing() {
-  const nav = useNavigate();
-  const [joinId, setJoinId] = useState("");
-  const [loading, setLoading] = useState(false);
+  const nav = useNavigate()
+  const [joinId, setJoinId] = useState("")
+  const [loading, setLoading] = useState(false)
 
   const createSession = async () => {
-    setLoading(true);
+    setLoading(true)
     try {
       const res = await api.post("/api/session/create", {
         name: "My Whiteboard",
-      });
-      nav(`/session/${res.data.id}`);
+      })
+      nav(`/session/${res.data.id}`)
     } catch (err) {
-      console.error(err);
-      alert("Failed to create session");
+      console.error(err)
+      alert("Failed to create session")
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   const joinSession = async () => {
-    if (!joinId) return alert("Please enter session ID");
-    setLoading(true);
-    try {
-      await api.post(`/api/session/join/${joinId}`);
-      nav(`/session/${joinId}`);
-    } catch (err) {
-      console.error(err);
-      alert("Failed to join session");
-    } finally {
-      setLoading(false);
+    if (!joinId) {
+      return alert("Please enter session ID")
     }
-  };
+    setLoading(true)
+    try {
+      await api.post(`/api/session/join/${joinId}`)
+      nav(`/session/${joinId}`)
+    } catch (err) {
+      console.error(err)
+      alert("Failed to join session")
+    } finally {
+      setLoading(false)
+    }
+  }
 
   return (
     <div className="min-vh-100 d-flex flex-column bg-white overflow-hidden">
-      {/* Navbar */}
       <nav className="navbar navbar-expand-lg fixed-top glass-panel border-0 m-3 rounded-pill shadow-sm animate-fade-in" style={{ zIndex: 100 }}>
         <div className="container px-4">
           <a className="navbar-brand fw-bold d-flex align-items-center gap-2" href="#">
@@ -63,9 +64,7 @@ export default function Landing() {
         </div>
       </nav>
 
-      {/* Hero Section */}
       <section className="position-relative min-vh-100 d-flex align-items-center pt-5">
-        {/* Dynamic Background */}
         <div className="position-absolute top-0 start-0 w-100 h-100 mesh-gradient opacity-10" style={{ zIndex: -1 }}></div>
 
         <div className="container pt-5">
@@ -120,11 +119,9 @@ export default function Landing() {
 
             <div className="col-lg-6 d-none d-lg-block">
               <div className="position-relative animate-float">
-                {/* Abstract Shapes */}
                 <div className="position-absolute top-0 end-0 bg-primary rounded-circle opacity-10" style={{ width: 300, height: 300, filter: "blur(50px)" }}></div>
                 <div className="position-absolute bottom-0 start-0 bg-info rounded-circle opacity-10" style={{ width: 200, height: 200, filter: "blur(40px)" }}></div>
 
-                {/* Main Visual Card */}
                 <div className="glass-panel p-2 rounded-4 shadow-lg position-relative bg-white bg-opacity-50" style={{ transform: "rotate(-2deg)" }}>
                   <div className="bg-white rounded-3 overflow-hidden border" style={{ height: "400px" }}>
                     <div className="p-3 border-bottom d-flex align-items-center gap-2 bg-light">
@@ -136,12 +133,10 @@ export default function Landing() {
                       <div className="mx-auto bg-white px-3 py-1 rounded-pill small text-muted border">Project Alpha</div>
                     </div>
                     <div className="p-4 position-relative h-100">
-                      {/* Fake UI Elements */}
                       <div className="position-absolute top-50 start-50 translate-middle text-center opacity-25">
                         <FiLayout size={64} className="mb-3" />
                         <h5>Infinite Canvas</h5>
                       </div>
-                      {/* Floating Cursors */}
                       <div className="position-absolute top-25 start-25 animate-float" style={{ animationDelay: "1s" }}>
                         <div className="badge bg-primary rounded-pill shadow-sm">Alice</div>
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="#6366f1" style={{ transform: "rotate(-15deg) translate(-5px, -5px)" }}>
@@ -163,7 +158,6 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* How It Works Section */}
       <section className="py-5 bg-light position-relative">
         <div className="container py-5">
           <div className="text-center mb-5">
@@ -206,9 +200,6 @@ export default function Landing() {
         </div>
       </section>
 
-
-
-      {/* Features Grid */}
       <section className="py-5 bg-white">
         <div className="container py-5">
           <div className="text-center mb-5">
@@ -253,7 +244,6 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Footer */}
       <footer className="py-4 bg-light text-center text-muted border-top">
         <div className="container">
           <div className="d-flex justify-content-center gap-4 mb-3">
@@ -265,5 +255,5 @@ export default function Landing() {
         </div>
       </footer>
     </div>
-  );
+  )
 }

@@ -1,7 +1,7 @@
-import session from "express-session";
-import Keycloak from "keycloak-connect";
+import session from "express-session"
+import Keycloak from "keycloak-connect"
 
-const memoryStore = new session.MemoryStore();
+const memoryStore = new session.MemoryStore()
 
 const keycloak = new Keycloak(
   { store: memoryStore },
@@ -12,7 +12,7 @@ const keycloak = new Keycloak(
     "ssl-required": "external",
     "public-client": true,
   } as any
-);
+)
 
 export function keycloakMiddleware() {
   const sessionMiddleware = session({
@@ -20,9 +20,9 @@ export function keycloakMiddleware() {
     resave: false,
     saveUninitialized: true,
     store: memoryStore,
-  });
+  })
 
-  return { sessionMiddleware, keycloak };
+  return { sessionMiddleware, keycloak }
 }
 
-export default keycloak;
+export default keycloak

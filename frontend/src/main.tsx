@@ -1,12 +1,12 @@
-import React from "react";
-import ReactDOM from "react-dom/client";
-import App from "./App";
-import { BrowserRouter } from "react-router-dom";
-import keycloak from "./keycloak";
-import "bootstrap/dist/css/bootstrap.min.css";
-import "./styles/globals.css";
+import React from "react"
+import ReactDOM from "react-dom/client"
+import App from "./App"
+import { BrowserRouter } from "react-router-dom"
+import keycloak from "./keycloak"
+import "bootstrap/dist/css/bootstrap.min.css"
+import "./styles/globals.css"
 
-console.log("ENV CHECK:", import.meta.env);
+console.log("ENV CHECK:", import.meta.env)
 
 keycloak
   .init({
@@ -20,6 +20,6 @@ keycloak
           <App />
         </BrowserRouter>
       </React.StrictMode>
-    );
+    )
   })
-  .catch((err) => console.error("Keycloak init failed", err));
+  .catch((err) => console.error("Keycloak init failed", err))

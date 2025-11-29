@@ -1,21 +1,21 @@
-import React, { useEffect, useState, useRef } from "react";
-import { Socket } from "socket.io-client";
-import { FiX, FiSend, FiMessageSquare } from "react-icons/fi";
+import React, { useEffect, useState, useRef } from "react"
+import { Socket } from "socket.io-client"
+import { FiX, FiSend, FiMessageSquare } from "react-icons/fi"
 
 type Props = {
-  show: boolean;
-  onClose: () => void;
-  socket: Socket;
-  sessionId: string;
-  username: string;
-};
+  show: boolean
+  onClose: () => void
+  socket: Socket
+  sessionId: string
+  username: string
+}
 
 export type ChatMessage = {
-  user: string;
-  text: string;
-  time: string;
-  isMe?: boolean;
-};
+  user: string
+  text: string
+  time: string
+  isMe?: boolean
+}
 
 export default function ChatModal({
   show,
@@ -24,50 +24,54 @@ export default function ChatModal({
   sessionId,
   username,
 }: Props) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [input, setInput] = useState("");
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [input, setInput] = useState("")
+  const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages, show]);
+    scrollToBottom()
+  }, [messages, show])
 
   useEffect(() => {
     const handler = (msg: ChatMessage) => {
-      setMessages((prev) => [...prev, { ...msg, isMe: false }]);
-    };
+      setMessages((prev) => [...prev, { ...msg, isMe: false }])
+    }
 
-    socket.on("chat-message", handler);
+    socket.on("chat-message", handler)
 
     return () => {
-      socket.off("chat-message", handler);
-    };
-  }, [socket]);
+      socket.off("chat-message", handler)
+    }
+  }, [socket])
 
   const sendMessage = (e?: React.FormEvent) => {
-    e?.preventDefault();
-    if (!input.trim()) return;
+    e?.preventDefault()
+    if (!input.trim()) {
+      return
+    }
 
     const msg: ChatMessage = {
       user: username,
       text: input,
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    };
+      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    }
 
     socket.emit("chat-message", {
       sessionId,
       msg,
-    });
+    })
 
-    setMessages((prev) => [...prev, { ...msg, isMe: true }]);
-    setInput("");
-  };
+    setMessages((prev) => [...prev, { ...msg, isMe: true }])
+    setInput("")
+  }
 
-  if (!show) return null;
+  if (!show) {
+    return null
+  }
 
   return (
     <div
@@ -84,7 +88,6 @@ export default function ChatModal({
         boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)"
       }}
     >
-      {/* Header */}
       <div className="p-3 border-bottom bg-white bg-opacity-50 d-flex justify-content-between align-items-center backdrop-blur-sm">
         <div className="d-flex align-items-center gap-2 text-primary">
           <FiMessageSquare />
@@ -95,7 +98,6 @@ export default function ChatModal({
         </button>
       </div>
 
-      {/* Messages */}
       <div className="flex-grow-1 p-3 overflow-auto d-flex flex-column gap-3 bg-white bg-opacity-25">
         {messages.length === 0 && (
           <div className="text-center text-muted mt-5 opacity-50">
@@ -124,7 +126,6 @@ export default function ChatModal({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input */}
       <form onSubmit={sendMessage} className="p-3 border-top bg-white bg-opacity-50 backdrop-blur-sm">
         <div className="input-group">
           <input
@@ -144,5 +145,5 @@ export default function ChatModal({
         </div>
       </form>
     </div>
-  );
+  )
 }

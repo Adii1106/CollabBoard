@@ -1,49 +1,55 @@
-import React, { useState } from "react";
-import axios from "axios";
-import keycloak from "../keycloak";
-import { FiX, FiUploadCloud, FiCpu } from "react-icons/fi";
+import React, { useState } from "react"
+import axios from "axios"
+import keycloak from "../keycloak"
+import { FiX, FiUploadCloud, FiCpu } from "react-icons/fi"
 
 type Props = {
-  show: boolean;
-  onClose: () => void;
-};
+  show: boolean
+  onClose: () => void
+}
 type Prediction = {
-  className: string;
-  probability: number;
-};
+  className: string
+  probability: number
+}
 
 export default function AIToolsModal({ show, onClose }: Props) {
-  const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
-  const [predictions, setPredictions] = useState<Prediction[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [file, setFile] = useState<File | null>(null)
+  const [preview, setPreview] = useState<string | null>(null)
+  const [predictions, setPredictions] = useState<Prediction[]>([])
+  const [loading, setLoading] = useState(false)
 
-  if (!show) return null;
+  if (!show){
+    return null
+  }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
 
-    if (!f) return;
+    if (!f){
+      return
+    }
 
-    setFile(f);
-    setPreview(URL.createObjectURL(f));
-    setPredictions([]);
+    setFile(f)
+    setPreview(URL.createObjectURL(f))
+    setPredictions([])
   }
 
   const handlePredict = async () => {
-    if (!file) return;
+    if (!file) {
+      return
+    }
 
-    setLoading(true);
-    const formData = new FormData();
-    formData.append("image", file);
+    setLoading(true)
+    const formData = new FormData()
+    formData.append("image", file)
 
     if (keycloak.token && keycloak.isTokenExpired(30)) {
-      await keycloak.updateToken(30);
+      await keycloak.updateToken(30)
     }
 
     const token = keycloak.token
     if (!token) {
-      alert("Authentication error: No valid token found");
+      alert("Authentication error: No valid token found")
       setLoading(false)
       return
     }
@@ -60,17 +66,17 @@ export default function AIToolsModal({ show, onClose }: Props) {
           },
           withCredentials: true
         }
-      );
+      )
 
       setPredictions(res.data.predictions)
 
     } catch (err) {
-      console.error("ML prediction failed:", err);
-      alert("Failed to get prediction. Check console.");
+      console.error("ML prediction failed:", err)
+      alert("Failed to get prediction. Check console.")
     }
 
     setLoading(false)
-  };
+  }
 
 
   return (
@@ -154,5 +160,5 @@ export default function AIToolsModal({ show, onClose }: Props) {
         </div>
       </div>
     </div>
-  );
+  )
 }
