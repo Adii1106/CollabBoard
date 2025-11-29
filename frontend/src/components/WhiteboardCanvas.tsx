@@ -1,7 +1,8 @@
 import React, { useRef, useEffect, useState, useCallback } from "react";
-import { Stage, Layer, Line, Text } from "react-konva";
+import { Stage, Layer, Line, Text, Path, Group, Rect } from "react-konva";
 import Konva from "konva";
 import { Socket } from "socket.io-client";
+import { FiEdit2, FiTrash2, FiRotateCcw, FiRotateCw, FiDownload } from "react-icons/fi";
 
 type Props = {
   sessionId: string;
@@ -19,18 +20,43 @@ type CursorData = {
   x: number;
   y: number;
   username: string;
+  lastUpdate: number;
+  color: string;
 };
 
 type ActionAdd = { type: "add"; stroke: Stroke };
 type ActionRemove = { type: "remove"; stroke: Stroke };
 type Action = ActionAdd | ActionRemove;
 
+const COLORS = ["#000000", "#ef4444", "#22c55e", "#3b82f6", "#eab308", "#a855f7"];
+const CURSOR_COLORS = ["#ef4444", "#f97316", "#f59e0b", "#84cc16", "#10b981", "#06b6d4", "#3b82f6", "#8b5cf6", "#d946ef", "#f43f5e"];
+
+const getCursorColor = (userId: string) => {
+  let hash = 0;
+  for (let i = 0; i < userId.length; i++) {
+    hash = userId.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return CURSOR_COLORS[Math.abs(hash) % CURSOR_COLORS.length];
+};
+
 export default function WhiteboardCanvas({ sessionId, socket }: Props) {
   const [lines, setLines] = useState<Stroke[]>([]);
   const [cursors, setCursors] = useState<Record<string, CursorData>>({});
-  const [color, setColor] = useState("#000000");
-  const [size, setSize] = useState(3);
+
+  // Initialize from localStorage
+  const [color, setColor] = useState(() => localStorage.getItem("wb_color") || "#000000");
+  const [size, setSize] = useState(() => Number(localStorage.getItem("wb_size")) || 3);
+
   const [tool, setTool] = useState<"brush" | "eraser">("brush");
+
+  // Save to localStorage on change
+  useEffect(() => {
+    localStorage.setItem("wb_color", color);
+  }, [color]);
+
+  useEffect(() => {
+    localStorage.setItem("wb_size", String(size));
+  }, [size]);
 
   const isDrawingRef = useRef(false);
   const stageRef = useRef<Konva.Stage | null>(null);
@@ -60,16 +86,52 @@ export default function WhiteboardCanvas({ sessionId, socket }: Props) {
     socket.on("cursor-move", ({ userId, cursor, username }) => {
       setCursors((prev) => ({
         ...prev,
-        [userId]: { ...cursor, username },
+        [userId]: {
+          ...cursor,
+          username,
+          lastUpdate: Date.now(),
+          color: prev[userId]?.color || getCursorColor(userId)
+        },
       }));
+    });
+
+    socket.on("user-left", ({ userId }) => {
+      setCursors((prev) => {
+        const next = { ...prev };
+        delete next[userId];
+        return next;
+      });
     });
 
     return () => {
       socket.off("draw");
       socket.off("erase");
       socket.off("cursor-move");
+      socket.off("user-left");
     };
   }, [socket]);
+
+  // -------------------------------
+  // Inactivity Cleanup
+  // -------------------------------
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      setCursors((prev) => {
+        const next = { ...prev };
+        let changed = false;
+        Object.keys(next).forEach((key) => {
+          if (now - next[key].lastUpdate > 10000) { // 10 seconds timeout
+            delete next[key];
+            changed = true;
+          }
+        });
+        return changed ? next : prev;
+      });
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   // -------------------------------
   // Undo / Redo helpers
@@ -267,81 +329,15 @@ export default function WhiteboardCanvas({ sessionId, socket }: Props) {
   // -------------------------------
   return (
     <>
-      {/* Toolbar */}
-      <div
-        style={{
-          display: "flex",
-          gap: "1rem",
-          padding: "10px",
-          background: "#f5f5f5",
-          borderBottom: "1px solid #ddd",
-          alignItems: "center",
-        }}
-      >
-        <button
-          className="btn btn-sm"
-          style={{
-            background: tool === "brush" ? "#007bff" : "#e0e0e0",
-            color: tool === "brush" ? "white" : "black",
-          }}
-          onClick={() => setTool("brush")}
-        >
-          Brush
-        </button>
-
-        <button
-          className="btn btn-sm"
-          style={{
-            background: tool === "eraser" ? "#dc3545" : "#e0e0e0",
-            color: tool === "eraser" ? "white" : "black",
-          }}
-          onClick={() => setTool("eraser")}
-        >
-          Eraser
-        </button>
-
-        {tool === "brush" && (
-          <>
-            <label>Color:</label>
-            <input
-              type="color"
-              value={color}
-              onChange={(e) => setColor(e.target.value)}
-            />
-          </>
-        )}
-
-        <label>
-          Size: <strong>{size}px</strong>
-        </label>
-        <input
-          type="range"
-          min="1"
-          max="60"
-          value={size}
-          onChange={(e) => setSize(Number(e.target.value))}
-        />
-
-        <button className="btn btn-sm btn-outline-secondary" onClick={handleUndo} disabled={!canUndo()}>
-          Undo
-        </button>
-        <button className="btn btn-sm btn-outline-secondary" onClick={handleRedo} disabled={!canRedo()}>
-          Redo
-        </button>
-
-        <button className="btn btn-sm btn-success" onClick={handleDownload}>
-          Download PNG
-        </button>
-      </div>
-
       {/* Canvas */}
       <Stage
         width={window.innerWidth}
-        height={window.innerHeight - 60}
+        height={window.innerHeight}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         ref={stageRef}
+        style={{ cursor: tool === "eraser" ? "crosshair" : "default" }}
       >
         <Layer>
           {lines.map((line) => (
@@ -352,27 +348,143 @@ export default function WhiteboardCanvas({ sessionId, socket }: Props) {
               strokeWidth={line.strokeWidth}
               tension={0.5}
               lineCap="round"
+              lineJoin="round"
             />
           ))}
 
           {Object.entries(cursors).map(([userId, cursor]) => (
-            <React.Fragment key={userId}>
-              <Line
-                points={[cursor.x, cursor.y, cursor.x + 1, cursor.y + 1]}
-                stroke="red"
-                strokeWidth={6}
+            <Group key={userId} x={cursor.x} y={cursor.y}>
+              {/* Cursor Arrow */}
+              <Path
+                data="M5.65376 12.3673H5.46026L5.31717 12.4976L0.500002 16.8829L0.500002 1.19169L14.8418 17.4603L9.2627 17.4603L9.2627 17.4603L5.65376 12.3673Z"
+                fill={cursor.color}
+                stroke="white"
+                strokeWidth={1}
+                rotation={-15}
               />
-              <Text
-                x={cursor.x + 10}
-                y={cursor.y + 10}
-                text={cursor.username}
-                fontSize={14}
-                fill="black"
-              />
-            </React.Fragment>
+
+              {/* Username Label */}
+              <Group x={16} y={16}>
+                <Rect
+                  fill={cursor.color}
+                  cornerRadius={4}
+                  width={cursor.username.length * 8 + 16}
+                  height={24}
+                  shadowColor="black"
+                  shadowBlur={2}
+                  shadowOpacity={0.2}
+                  shadowOffset={{ x: 1, y: 1 }}
+                />
+                <Text
+                  text={cursor.username}
+                  fontSize={12}
+                  fill="white"
+                  fontStyle="bold"
+                  padding={6}
+                  align="center"
+                />
+              </Group>
+            </Group>
           ))}
         </Layer>
       </Stage>
+
+      {/* Floating Toolbar */}
+      <div className="position-absolute bottom-0 start-50 translate-middle-x mb-4 d-flex flex-column align-items-center gap-3" style={{ zIndex: 20 }}>
+
+        {/* Stroke Size & Color (Only visible when Brush is active) */}
+        {tool === "brush" && (
+          <div className="glass-panel px-3 py-2 rounded-pill d-flex align-items-center gap-3 animate-fade-in">
+            <div className="d-flex gap-1">
+              {COLORS.map((c) => (
+                <button
+                  key={c}
+                  className="btn btn-sm rounded-circle p-0 border-2"
+                  style={{
+                    width: 24,
+                    height: 24,
+                    backgroundColor: c,
+                    borderColor: color === c ? "white" : "transparent",
+                    boxShadow: color === c ? "0 0 0 2px var(--primary-color)" : "none"
+                  }}
+                  onClick={() => setColor(c)}
+                />
+              ))}
+              <input
+                type="color"
+                value={color}
+                onChange={(e) => setColor(e.target.value)}
+                className="form-control form-control-color p-0 border-0 rounded-circle"
+                style={{ width: 24, height: 24, overflow: "hidden" }}
+                title="Custom Color"
+              />
+            </div>
+            <div className="vr opacity-25"></div>
+            <div className="d-flex align-items-center gap-2">
+              <span className="small text-muted" style={{ width: 40 }}>{size}px</span>
+              <input
+                type="range"
+                min="1"
+                max="50"
+                value={size}
+                onChange={(e) => setSize(Number(e.target.value))}
+                className="form-range"
+                style={{ width: 100 }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Main Tools */}
+        <div className="glass-panel px-4 py-2 rounded-pill d-flex align-items-center gap-2 shadow-lg">
+          <button
+            className={`btn btn-lg rounded-circle d-flex align-items-center justify-content-center p-2 ${tool === "brush" ? "btn-primary" : "btn-light text-muted"}`}
+            onClick={() => setTool("brush")}
+            title="Brush"
+          >
+            <FiEdit2 size={20} />
+          </button>
+
+          <button
+            className={`btn btn-lg rounded-circle d-flex align-items-center justify-content-center p-2 ${tool === "eraser" ? "btn-danger text-white" : "btn-light text-muted"}`}
+            onClick={() => setTool("eraser")}
+            title="Eraser"
+          >
+            <FiTrash2 size={20} />
+          </button>
+
+          <div className="vr mx-2 opacity-25"></div>
+
+          <button
+            className="btn btn-light btn-sm rounded-circle p-2 text-muted"
+            onClick={handleUndo}
+            disabled={!canUndo()}
+            title="Undo"
+          >
+            <FiRotateCcw size={18} />
+          </button>
+
+          <button
+            className="btn btn-light btn-sm rounded-circle p-2 text-muted"
+            onClick={handleRedo}
+            disabled={!canRedo()}
+            title="Redo"
+          >
+            <FiRotateCw size={18} />
+          </button>
+
+          <div className="vr mx-2 opacity-25"></div>
+
+          <button
+            className="btn btn-success btn-sm rounded-pill px-3 d-flex align-items-center gap-2"
+            onClick={handleDownload}
+            title="Download PNG"
+          >
+            <FiDownload size={16} />
+            <span className="small fw-medium">Save</span>
+          </button>
+        </div>
+      </div>
     </>
   );
 }

@@ -55,7 +55,7 @@ io.on("connection", async (socket) => {
 
   const token = socket.handshake.auth?.token || socket.handshake.query?.token
 
-  if(!token){
+  if (!token) {
     socket.emit("unauthorized")
     socket.disconnect()
     return
@@ -72,6 +72,7 @@ io.on("connection", async (socket) => {
 
   socket.on("join-room", (sessionId: string) => {
     socket.join(sessionId)
+    socket.data.sessionId = sessionId; // Store session ID
     socket.to(sessionId).emit("user-joined", {
       userId: userinfo.sub,
       socketId: socket.id,
@@ -99,8 +100,20 @@ io.on("connection", async (socket) => {
     });
   });
 
+  // CHAT EVENT
+  socket.on("chat-message", ({ sessionId, msg }) => {
+    socket.to(sessionId).emit("chat-message", msg);
+  });
+
   socket.on("disconnect", () => {
     console.log(`Socket disconnected: ${socket.id}`)
+    const sessionId = socket.data.sessionId;
+    if (sessionId) {
+      socket.to(sessionId).emit("user-left", {
+        userId: userinfo.sub,
+        socketId: socket.id
+      });
+    }
   });
 });
 
