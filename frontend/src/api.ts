@@ -1,18 +1,14 @@
 import axios from "axios";
-import keycloak from "./keycloak";
 
 const api = axios.create({
-  baseURL: "http://localhost:3001",
+  baseURL: import.meta.env.VITE_API_URL || "http://localhost:3001",
 });
 
-api.interceptors.request.use(async (config) => {
-  // refresh token if needed
-  if (keycloak.token && keycloak.isTokenExpired(30)) {
-    await keycloak.updateToken(30);
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem("token");
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
-
-  config.headers = config.headers || {};
-  config.headers["Authorization"] = `Bearer ${keycloak.token}`;
   return config;
 });
 

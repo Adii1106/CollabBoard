@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import WhiteboardCanvas from "../components/WhiteboardCanvas"
 import { io, Socket } from "socket.io-client"
-import keycloak from "../keycloak"
 import AIToolsModal from "../components/AIToolsModal"
 import ChatModal from "../components/ChatModal"
 import { FiArrowLeft, FiCpu, FiCopy, FiCheck, FiMessageSquare, FiUsers } from "react-icons/fi"
@@ -25,12 +24,10 @@ export default function Whiteboard() {
 
   useEffect(() => {
     async function connectSocket() {
-      if (keycloak.token && keycloak.isTokenExpired(30)) {
-        await keycloak.updateToken(30)
-      }
+      const token = localStorage.getItem("token")
 
       const socket = io("http://localhost:3001", {
-        auth: { token: keycloak.token },
+        auth: { token },
       })
 
       socketRef.current = socket
@@ -60,13 +57,14 @@ export default function Whiteboard() {
 
       socket.on("unauthorized", () => {
         console.error("Socket unauthorized")
+        navigate("/login")
       })
 
       return () => socket.disconnect()
     }
 
     connectSocket()
-  }, [sessionId])
+  }, [sessionId, navigate])
 
   const socket = socketRef.current
 
@@ -86,6 +84,8 @@ export default function Whiteboard() {
       </div>
     )
   }
+
+  const user = JSON.parse(localStorage.getItem("user") || "{}")
 
   return (
     <div className="vh-100 vw-100 position-relative overflow-hidden bg-light">
@@ -168,7 +168,7 @@ export default function Whiteboard() {
         onClose={() => setShowChat(false)}
         socket={socket}
         sessionId={sessionId ?? ""}
-        username={keycloak.tokenParsed?.preferred_username || "User"}
+        username={user.username || "User"}
       />
     </div>
   )

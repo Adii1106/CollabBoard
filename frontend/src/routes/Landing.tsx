@@ -1,13 +1,19 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import api from "../api"
-import keycloak from "../keycloak"
 import { FiPlus, FiLogIn, FiLogOut, FiZap, FiCpu, FiShield, FiShare2, FiEdit3, FiLayout } from "react-icons/fi"
 
 export default function Landing() {
   const nav = useNavigate()
   const [joinId, setJoinId] = useState("")
   const [loading, setLoading] = useState(false)
+  const user = JSON.parse(localStorage.getItem("user") || "{}")
+
+  const handleLogout = () => {
+    localStorage.removeItem("token")
+    localStorage.removeItem("user")
+    nav("/login")
+  }
 
   const createSession = async () => {
     setLoading(true)
@@ -52,11 +58,11 @@ export default function Landing() {
           </a>
           <div className="d-flex align-items-center gap-3">
             <span className="text-muted small d-none d-md-block">
-              Hello, <strong className="text-primary">{keycloak.tokenParsed?.preferred_username}</strong>
+              Hello, <strong className="text-primary">{user.username || "Guest"}</strong>
             </span>
             <button
               className="btn btn-light rounded-pill px-4 btn-sm d-flex align-items-center gap-2 border"
-              onClick={() => keycloak.logout()}
+              onClick={handleLogout}
             >
               <FiLogOut /> <span className="d-none d-sm-inline">Logout</span>
             </button>

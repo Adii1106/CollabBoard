@@ -3,25 +3,28 @@ import cors from "cors"
 import dotenv from "dotenv"
 import http from "http"
 import { Server as IOServer } from "socket.io"
-import axios from "axios"
-import { keycloakMiddleware } from "./config/keycloak"
+import jwt from "jsonwebtoken"
 import sessionRoutes from "./routes/sessionRoutes"
+import authRoutes from "./routes/authRoutes"
 import { loadModel } from "./controllers/mlController"
 import mlRoutes from "./routes/mlRoutes"
+import { authMiddleware } from "./middleware/auth"
 
 dotenv.config()
 
 const PORT = Number(process.env.PORT || 3001)
+const SECRET = process.env.JWT_SECRET || "super-secret-key"
+
 const app = express()
 
 app.use(cors({ origin: true, credentials: true }))
 app.use(express.json())
 
-const { sessionMiddleware, keycloak: keycloakInstance } = keycloakMiddleware()
-app.use(sessionMiddleware)
-app.use(keycloakInstance.middleware())
+// Middleware
+app.use(authMiddleware)
 
 app.get("/health", (_req, res) => res.json({ status: "ok" }))
+app.use("/api/auth", authRoutes)
 app.use("/api/session", sessionRoutes)
 app.use("/api/ml", mlRoutes)
 loadModel()
@@ -37,12 +40,11 @@ const io = new IOServer(httpServer, {
 
 async function validateToken(token: string) {
   try {
-    const url = `${process.env.KEYCLOAK_AUTH_SERVER_URL}/realms/${process.env.KEYCLOAK_REALM}/protocol/openid-connect/userinfo`
-    const resp = await axios.get(url, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-
-    return resp.data
+    const payload = jwt.verify(token, SECRET) as any
+    return {
+      sub: payload.id,
+      preferred_username: payload.username
+    }
   } catch (err) {
     return null
   }
@@ -57,7 +59,7 @@ io.on("connection", async (socket) => {
     return
   }
 
-  const userinfo = await validateToken(token)
+  const userinfo = await validateToken(token as string)
   if (!userinfo) {
     socket.emit("unauthorized")
     socket.disconnect()

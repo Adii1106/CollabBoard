@@ -1,6 +1,6 @@
 import React, { useState } from "react"
 import axios from "axios"
-import keycloak from "../keycloak"
+
 import { FiX, FiUploadCloud, FiCpu } from "react-icons/fi"
 
 type Props = {
@@ -18,14 +18,14 @@ export default function AIToolsModal({ show, onClose }: Props) {
   const [predictions, setPredictions] = useState<Prediction[]>([])
   const [loading, setLoading] = useState(false)
 
-  if (!show){
+  if (!show) {
     return null
   }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
 
-    if (!f){
+    if (!f) {
       return
     }
 
@@ -43,11 +43,9 @@ export default function AIToolsModal({ show, onClose }: Props) {
     const formData = new FormData()
     formData.append("image", file)
 
-    if (keycloak.token && keycloak.isTokenExpired(30)) {
-      await keycloak.updateToken(30)
-    }
+    setLoading(true)
 
-    const token = keycloak.token
+    const token = localStorage.getItem("token")
     if (!token) {
       alert("Authentication error: No valid token found")
       setLoading(false)

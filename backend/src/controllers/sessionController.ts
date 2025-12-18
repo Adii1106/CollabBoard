@@ -8,7 +8,7 @@ export async function createSession(req: Request, res: Response) {
     const { name } = req.body
 
     const session = await prisma.session.create({
-      data: {name: name ?? null,}
+      data: { name: name ?? null, }
     });
 
     return res.json(session)
@@ -22,18 +22,17 @@ export async function createSession(req: Request, res: Response) {
 
 export async function joinSession(req: Request, res: Response) {
   try {
-    
+
     const { id } = req.params
-    const tokenData = (req as any).kauth?.grant?.access_token?.content
-    const userId = tokenData?.sub
+    const userId = (req as any).user?.id
 
     const session = await prisma.session.findUnique({ where: { id } })
 
-    if (!session){
+    if (!session) {
       return res.status(404).json({ error: "Session not found" })
     }
 
-    if (userId){
+    if (userId) {
       await prisma.userSession.create({
         data: { sessionId: id, userId }
       })
@@ -44,6 +43,6 @@ export async function joinSession(req: Request, res: Response) {
 
     console.error("joinSession error:", err)
     res.status(500).json({ error: "Internal server error" })
-    
+
   }
 }
