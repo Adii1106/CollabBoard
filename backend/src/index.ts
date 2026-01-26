@@ -17,7 +17,29 @@ const SECRET = process.env.JWT_SECRET || "super-secret-key"
 
 const app = express()
 
-app.use(cors({ origin: true, credentials: true }))
+// CORS configuration for production
+const allowedOrigins: string[] = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'https://collab-board-snowy.vercel.app',
+  process.env.FRONTEND_URL || ''
+].filter(origin => origin !== '')
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true)
+
+    if (allowedOrigins.some(allowed => origin.startsWith(allowed))) {
+      callback(null, true)
+    } else {
+      callback(new Error('Not allowed by CORS'))
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}))
 app.use(express.json())
 
 // Middleware
@@ -33,8 +55,9 @@ const httpServer = http.createServer(app)
 
 const io = new IOServer(httpServer, {
   cors: {
-    origin: true,
+    origin: allowedOrigins,
     credentials: true,
+    methods: ['GET', 'POST']
   }
 })
 
