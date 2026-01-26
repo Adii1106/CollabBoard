@@ -20,24 +20,43 @@ const app = express()
 // CORS configuration for production
 app.use(cors({
   origin: (origin, callback) => {
+    console.log('[CORS] Request from origin:', origin)
+
     // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true)
+    if (!origin) {
+      console.log('[CORS] Allowing request with no origin')
+      return callback(null, true)
+    }
 
     // Allow localhost for development
-    if (origin.includes('localhost')) return callback(null, true)
+    if (origin.includes('localhost')) {
+      console.log('[CORS] Allowing localhost')
+      return callback(null, true)
+    }
 
     // Allow all vercel.app domains
-    if (origin.includes('vercel.app')) return callback(null, true)
+    if (origin.includes('vercel.app')) {
+      console.log('[CORS] Allowing vercel.app domain')
+      return callback(null, true)
+    }
 
     // Allow the specific Render backend domain
-    if (origin.includes('onrender.com')) return callback(null, true)
+    if (origin.includes('onrender.com')) {
+      console.log('[CORS] Allowing onrender.com domain')
+      return callback(null, true)
+    }
 
+    console.log('[CORS] BLOCKED origin:', origin)
     callback(new Error('Not allowed by CORS'))
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }))
+
+// Explicitly handle OPTIONS preflight requests
+app.options('*', cors())
+
 app.use(express.json())
 
 // Middleware
