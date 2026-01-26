@@ -18,23 +18,21 @@ const SECRET = process.env.JWT_SECRET || "super-secret-key"
 const app = express()
 
 // CORS configuration for production
-const allowedOrigins: string[] = [
-  'http://localhost:5173',
-  'http://localhost:3000',
-  'https://collab-board-snowy.vercel.app',
-  process.env.FRONTEND_URL || ''
-].filter(origin => origin !== '')
-
 app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true)
 
-    if (allowedOrigins.some(allowed => origin.startsWith(allowed))) {
-      callback(null, true)
-    } else {
-      callback(new Error('Not allowed by CORS'))
-    }
+    // Allow localhost for development
+    if (origin.includes('localhost')) return callback(null, true)
+
+    // Allow all vercel.app domains
+    if (origin.includes('vercel.app')) return callback(null, true)
+
+    // Allow the specific Render backend domain
+    if (origin.includes('onrender.com')) return callback(null, true)
+
+    callback(new Error('Not allowed by CORS'))
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -55,7 +53,13 @@ const httpServer = http.createServer(app)
 
 const io = new IOServer(httpServer, {
   cors: {
-    origin: allowedOrigins,
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true)
+      if (origin.includes('localhost') || origin.includes('vercel.app') || origin.includes('onrender.com')) {
+        return callback(null, true)
+      }
+      callback(null, false)
+    },
     credentials: true,
     methods: ['GET', 'POST']
   }
