@@ -53,8 +53,9 @@ export default function AIToolsModal({ show, onClose }: Props) {
     }
 
     try {
+      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:3001"
       const res = await axios.post(
-        "http://localhost:3001/api/ml/predict",
+        `${apiUrl}/api/ml/predict`,
         formData,
         {
           headers: {
