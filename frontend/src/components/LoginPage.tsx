@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api";
+import { isAxiosError } from "axios";
 
 export default function LoginPage() {
     const [isLogin, setIsLogin] = useState(true);
@@ -21,11 +22,15 @@ export default function LoginPage() {
 
             // Redirect to home or previous page
             navigate("/");
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error(err);
-            setError(err.response?.data?.error || "An error occurred");
+            if (isAxiosError(err) && err.response?.data?.error) {
+                setError(err.response.data.error);
+            } else {
+                setError("An error occurred");
+            }
         }
-    };
+    }
 
     return (
         <div className="container d-flex justify-content-center align-items-center vh-100">

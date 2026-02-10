@@ -98,6 +98,11 @@ export default function WhiteboardCanvas({ sessionId, socket }: Props) {
       })
     })
 
+    socket.on("whiteboard-state", (state: { strokes: Stroke[]; shapes: Shape[] }) => {
+      setLines(state.strokes)
+      setShapes(state.shapes)
+    })
+
     socket.on("erase", ({ strokeId }: { strokeId: string }) => {
       setLines((prev) => prev.filter((l) => l.id !== strokeId))
       setShapes((prev) => prev.filter((s) => s.id !== strokeId))
@@ -129,6 +134,7 @@ export default function WhiteboardCanvas({ sessionId, socket }: Props) {
       socket.off("erase")
       socket.off("cursor-move")
       socket.off("user-left")
+      socket.off("whiteboard-state")
     }
   }, [socket])
 

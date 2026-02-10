@@ -85,13 +85,22 @@ async function validateToken(token: string) {
   try {
     const payload = jwt.verify(token, SECRET) as any
     return {
-      sub: payload.id,
+      sub: String(payload.id),
       preferred_username: payload.username
     }
   } catch (err) {
     return null
   }
 }
+
+// In-memory store for whiteboard state per session
+// In a production app, use Redis or a database
+interface WhiteboardState {
+  strokes: any[]
+  shapes: any[]
+}
+
+const whiteboardState: Record<string, WhiteboardState> = {}
 
 io.on("connection", async (socket) => {
   const token = socket.handshake.auth?.token || socket.handshake.query?.token
@@ -123,7 +132,15 @@ io.on("connection", async (socket) => {
       username: s.data.username
     })).filter(u => u.username)
 
-    socket.emit("room-users", users)
+    // Remove duplicates based on userId
+    const uniqueUsers = Array.from(new Map(users.map(u => [u.userId, u])).values())
+
+    socket.emit("room-users", uniqueUsers)
+
+    // Send existing whiteboard state to the new user
+    if (whiteboardState[sessionId]) {
+      socket.emit("whiteboard-state", whiteboardState[sessionId])
+    }
 
     socket.to(sessionId).emit("user-joined", {
       userId: userinfo.sub,
@@ -141,11 +158,41 @@ io.on("connection", async (socket) => {
   })
 
   socket.on("draw", ({ sessionId, stroke }) => {
+    if (!whiteboardState[sessionId]) {
+      whiteboardState[sessionId] = { strokes: [], shapes: [] }
+    }
+    // Update or add stroke
+    const existingIndex = whiteboardState[sessionId].strokes.findIndex(s => s.id === stroke.id)
+    if (existingIndex >= 0) {
+      whiteboardState[sessionId].strokes[existingIndex] = stroke
+    } else {
+      whiteboardState[sessionId].strokes.push(stroke)
+    }
+
     socket.to(sessionId).emit("draw", { userId: userinfo.sub, stroke })
   })
 
   socket.on("draw-shape", ({ sessionId, shape }) => {
+    if (!whiteboardState[sessionId]) {
+      whiteboardState[sessionId] = { strokes: [], shapes: [] }
+    }
+    // Update or add shape
+    const existingIndex = whiteboardState[sessionId].shapes.findIndex(s => s.id === shape.id)
+    if (existingIndex >= 0) {
+      whiteboardState[sessionId].shapes[existingIndex] = shape
+    } else {
+      whiteboardState[sessionId].shapes.push(shape)
+    }
+
     socket.to(sessionId).emit("draw-shape", { userId: userinfo.sub, shape })
+  })
+
+  socket.on("erase", ({ sessionId, strokeId }) => {
+    if (whiteboardState[sessionId]) {
+      whiteboardState[sessionId].strokes = whiteboardState[sessionId].strokes.filter(s => s.id !== strokeId)
+      whiteboardState[sessionId].shapes = whiteboardState[sessionId].shapes.filter(s => s.id !== strokeId)
+    }
+    socket.to(sessionId).emit("erase", { strokeId })
   })
 
   socket.on("cursor-move", ({ sessionId, cursor }) => {
